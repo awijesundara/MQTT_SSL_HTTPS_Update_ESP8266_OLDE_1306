@@ -1,4 +1,4 @@
-# ESP8266 MQTT/SSL Sensor Node with OLED Status Display and HTTP OTA Update
+# ESP8266 MQTT/SSL Sensor Node with OLED Status Display and HTTPS OTA Update
 
 An ESP8266 sketch that reads temperature and humidity from a DHT22 sensor,
 publishes the readings to an MQTT broker over TLS, shows live Wi-Fi/MQTT/
@@ -23,11 +23,13 @@ firmware to install over-the-air.
    status, last update timestamp, firmware update status, and the
    current firmware version.
 
-Note: the firmware update channel itself is plain HTTP (`fwUrlBase`
-defaults to `http://...`) while the MQTT channel is TLS-encrypted — see
-the diagram below. If you want the OTA channel encrypted too, point
-`FW_BASE_URL` at an `https://` endpoint (the `ESP8266httpUpdate` library
-supports this, but that is not how this sketch is wired by default).
+Both channels are TLS with a pinned root CA: MQTT uses `ROOT_CA_CERT`,
+and the OTA/firmware channel uses a separate `OTA_ROOT_CA_CERT` and its
+own `WiFiClientSecure` (`otaNet`). `FW_BASE_URL` must be `https://` — an
+unauthenticated HTTP OTA channel would let anyone on the network path
+push arbitrary code to the device, and `ESP8266httpUpdate` on its own
+does not verify a code-signing signature, so certificate pinning is the
+only thing standing between this device and a malicious firmware image.
 
 ## Architecture
 
@@ -42,7 +44,7 @@ flowchart LR
     end
 
     Broker[("MQTT Broker\n(TLS, port 8883)")]
-    OTA[("HTTP(S) Firmware\nUpdate Server")]
+    OTA[("HTTPS Firmware\nUpdate Server")]
 
     MCU -- "publish: temp / humidity / heartbeat\n(MQTT over TLS)" --> Broker
     Broker -- "subscribe: firmware-update notice\n(MQTT over TLS)" --> MCU
@@ -87,14 +89,16 @@ credentials) and fill in:
 
 - `WIFI_SSID` / `WIFI_PASS`
 - `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS`
-- `FW_BASE_URL` — base URL the device checks for `.version`/`.bin` files
+- `FW_BASE_URL` — `https://` base URL the device checks for `.version`/`.bin`
+  files
 - `ROOT_CA_CERT` — the CA certificate that signed your MQTT broker's TLS
   certificate (`openssl s_client -connect <host>:8883 -showcerts`)
+- `OTA_ROOT_CA_CERT` — the CA certificate that signed your OTA/firmware
+  server's TLS certificate (same command, against the OTA host/port)
 
 Non-secret settings such as the MQTT topic prefix (`HOSTNAME`) and
 `FW_VERSION` live directly in `IoT_ESP8266_MCU_OLED.ino` — bump
-`FW_VERSION`/`IOT_FW_VER` on every release you publish to the update
-server.
+`FW_VERSION` on every release you publish to the update server.
 
 ## Build & flash
 

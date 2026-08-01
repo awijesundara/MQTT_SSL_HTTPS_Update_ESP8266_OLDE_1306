@@ -6,7 +6,8 @@
 //   - shows Wi-Fi/MQTT/update status plus the last publish time on an
 //     SSD1306 OLED display
 //   - listens on MQTT for a firmware-update notification and, when a
-//     newer version is announced, performs an HTTP(S) OTA update
+//     newer version is announced, performs an HTTPS OTA update (the
+//     firmware server's certificate is pinned via OTA_ROOT_CA_CERT)
 //
 // Libraries required (install via Arduino Library Manager or PlatformIO):
 //   ESP8266WiFi, ESP8266HTTPClient, ESP8266httpUpdate (bundled with the
@@ -38,10 +39,9 @@
 // ---------------------------------------------------------------------
 #define HOSTNAME "/IoT/oled/Suzukake/01"
 
-// Bump FW_VERSION on every release. IOT_FW_VER is the string form
-// published to MQTT_PUB_TOPIC_FW so subscribers can display it.
-static const int  FW_VERSION  = 12349;
-static const char IOT_FW_VER[] = "12349";
+// Bump FW_VERSION on every release. It's published (as a string) to
+// MQTT_PUB_TOPIC_FW so subscribers can display it.
+static const int FW_VERSION = 12349;
 
 static const char MQTT_SUB_TOPIC[]          = "IoT/Firmware_Update/in";
 static const char MQTT_SUB_TOPIC_FW_UPDATE[] = "SH_Gateway/fw_update";
@@ -58,6 +58,13 @@ static const char MQTT_PUB_TOPIC_FW[]       = HOSTNAME "/fw";
 
 static const unsigned long PUBLISH_INTERVAL_MS = 5000;
 
+// Local UTC offset used for the SNTP time sync in setup() (JST, UTC+9).
+static const long TIME_ZONE_OFFSET_SEC = 9 * 3600;
+
+// A timestamp from 2017-11-13; time(nullptr) returning anything before
+// this means SNTP hasn't synced yet (the RTC starts at epoch 0 on boot).
+static const time_t SNTP_SYNCED_THRESHOLD = 1510592825;
+
 // ---------------------------------------------------------------------
 // Peripherals
 // ---------------------------------------------------------------------
@@ -66,6 +73,12 @@ DHT dht(DHT_PIN, DHT_TYPE);
 
 BearSSL::WiFiClientSecure net;
 PubSubClient client(net);
+
+// Separate TLS client (with its own trust anchor) used only for OTA
+// firmware checks/downloads. Kept distinct from the MQTT client `net`
+// so an in-progress OTA fetch never shares/steals the MQTT connection's
+// TLS session state.
+BearSSL::WiFiClientSecure otaNet;
 
 // ---------------------------------------------------------------------
 // OLED status text (updated by the various state-change handlers below)
@@ -132,7 +145,9 @@ void checkForUpdates() {
   Serial.println(fwVersionUrl);
 
   HTTPClient httpClient;
-  httpClient.begin(fwVersionUrl);
+  // Use the TLS client (with OTA_ROOT_CA_CERT pinned as trust anchor) so
+  // the version string can't be spoofed/downgraded by a MITM either.
+  httpClient.begin(otaNet, fwVersionUrl);
   int httpCode = httpClient.GET();
 
   if (httpCode == 200) {
@@ -153,7 +168,7 @@ void checkForUpdates() {
       redrawDisplay();
 
       String fwImageUrl = fwBaseUrl + ".bin";
-      t_httpUpdate_return ret = ESPhttpUpdate.update(fwImageUrl);
+      t_httpUpdate_return ret = ESPhttpUpdate.update(otaNet, fwImageUrl);
 
       switch (ret) {
         case HTTP_UPDATE_FAILED:
@@ -241,7 +256,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 // ---------------------------------------------------------------------
 void publishSensorReadings() {
   client.publish(MQTT_PUB_TOPIC, ctime(&now), false);
-  client.publish(MQTT_PUB_TOPIC_FW, IOT_FW_VER, false);
+  client.publish(MQTT_PUB_TOPIC_FW, String(FW_VERSION).c_str(), false);
 
   // Reading temperature or humidity takes about 250ms; sensor readings
   // may be up to 2 seconds "old" (it's a slow sensor).
@@ -303,9 +318,9 @@ void setup() {
   Serial.println();
 
   Serial.print("Setting time using SNTP -->  ");
-  configTime(+9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  configTime(TIME_ZONE_OFFSET_SEC, 0, "pool.ntp.org", "time.nist.gov");
   now = time(nullptr);
-  while (now < 1510592825) {
+  while (now < SNTP_SYNCED_THRESHOLD) {
     delay(500);
     Serial.print(".");
     now = time(nullptr);
@@ -321,8 +336,18 @@ void setup() {
   pinMode(STATUS_LED, OUTPUT);
 
   // Root CA used to validate the MQTT broker's TLS certificate.
-  BearSSL::X509List cert(ROOT_CA_CERT);
+  // NOTE: must be `static` (or otherwise outlive setup()) — setTrustAnchors()
+  // only stores a pointer, so a plain stack-local X509List here would be
+  // destroyed the moment setup() returns, leaving a dangling trust anchor
+  // for the rest of the sketch's life.
+  static BearSSL::X509List cert(ROOT_CA_CERT);
   net.setTrustAnchors(&cert);
+
+  // Root CA used to validate the OTA/firmware server's TLS certificate.
+  // Pinning this (rather than calling otaNet.setInsecure()) is what
+  // stops a MITM from serving a malicious .bin during an update check.
+  static BearSSL::X509List otaCert(OTA_ROOT_CA_CERT);
+  otaNet.setTrustAnchors(&otaCert);
 
   client.setServer(MQTT_HOST, MQTT_PORT);
   client.setCallback(onMqttMessage);
