@@ -5,6 +5,15 @@ publishes the readings to an MQTT broker over TLS, shows live Wi-Fi/MQTT/
 firmware status on an SSD1306 OLED, and checks a remote server for newer
 firmware to install over-the-air.
 
+[![CI](https://github.com/awijesundara/MQTT_SSL_HTTPS_Update_ESP8266_OLDE_1306/actions/workflows/ci.yml/badge.svg)](https://github.com/awijesundara/MQTT_SSL_HTTPS_Update_ESP8266_OLDE_1306/actions/workflows/ci.yml)
+[![Last commit](https://img.shields.io/github/last-commit/awijesundara/MQTT_SSL_HTTPS_Update_ESP8266_OLDE_1306/master)](https://github.com/awijesundara/MQTT_SSL_HTTPS_Update_ESP8266_OLDE_1306/commits/master)
+[![Top language](https://img.shields.io/github/languages/top/awijesundara/MQTT_SSL_HTTPS_Update_ESP8266_OLDE_1306)](https://github.com/awijesundara/MQTT_SSL_HTTPS_Update_ESP8266_OLDE_1306)
+[![Code size](https://img.shields.io/github/languages/code-size/awijesundara/MQTT_SSL_HTTPS_Update_ESP8266_OLDE_1306)](https://github.com/awijesundara/MQTT_SSL_HTTPS_Update_ESP8266_OLDE_1306)
+[![ESP8266](https://img.shields.io/badge/ESP8266-NodeMCU-E7352C?logo=espressif&logoColor=white)](platformio.ini)
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino-F5822A?logo=platformio&logoColor=white)](platformio.ini)
+[![MQTT](https://img.shields.io/badge/MQTT-TLS-660066?logo=mqtt&logoColor=white)](IoT_ESP8266_MCU_OLED.ino)
+[![OTA](https://img.shields.io/badge/OTA-HTTPS-2E7D32)](IoT_ESP8266_MCU_OLED.ino)
+
 ## What it does
 
 1. Connects to Wi-Fi and syncs the clock over SNTP.
@@ -127,3 +136,14 @@ isn't available in this environment, and neither `platformio` nor
 `arduino-cli` is installed here, so the build could not be compiled or
 flashed as part of this change. Review the diff carefully and build
 locally with PlatformIO or the Arduino IDE before flashing a device.
+
+## Project statistics
+
+| Metric | Value |
+|---|---|
+| Tracked files | 5 |
+| Lines of code (non-blank) | 373 |
+| Languages | C++ (Arduino) 330, C/C++ header 43 |
+| Commits | 4 |
+
+CI compiles the firmware with PlatformIO on each push to `master`, using the example credentials file.
